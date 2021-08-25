@@ -6,8 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"math/rand"
-	"time"
 	"net"
+	"time"
 
 	"github.com/Dreamacro/clash/adapter/outbound"
 	"github.com/Dreamacro/clash/common/murmur3"
@@ -17,6 +17,10 @@ import (
 
 	"golang.org/x/net/publicsuffix"
 )
+
+func init() {
+	rand.Seed(time.Now().UnixNano())
+}
 
 type strategyFn = func(proxies []C.Proxy, metadata *C.Metadata) C.Proxy
 
@@ -121,12 +125,11 @@ func (lb *LoadBalance) SupportUDP() bool {
 }
 
 func strategyShuffle() strategyFn {
-	rand.Seed(time.Now().UnixNano())
 	maxRetry := 5
 	return func(proxies []C.Proxy, metadata *C.Metadata) C.Proxy {
 		length := len(proxies)
 		sl := shuffle(length)
-		for i := 0; i < maxRetry && i <= length; i++ {
+		for i := 0; i < maxRetry && i < length; i++ {
 			idx := sl[i]
 			proxy := proxies[idx]
 			if proxy.Alive() {
