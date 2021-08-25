@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math/rand"
+	"time"
 	"net"
 
 	"github.com/Dreamacro/clash/adapter/outbound"
@@ -68,6 +70,24 @@ func jumpHash(key uint64, buckets int32) int32 {
 	return int32(b)
 }
 
+func makeRange(max int) []int {
+	a := make([]int, max)
+	for i := range a {
+		a[i] = i
+	}
+	return a
+}
+
+func shuffle(len int) []int {
+	var indexes = makeRange(len)
+	for i := len; i > 1; i-- {
+		lastIdx := i - 1
+		idx := rand.Intn(i)
+		indexes[lastIdx], indexes[idx] = indexes[idx], indexes[lastIdx]
+	}
+	return indexes
+}
+
 // DialContext implements C.ProxyAdapter
 func (lb *LoadBalance) DialContext(ctx context.Context, metadata *C.Metadata) (c C.Conn, err error) {
 	defer func() {
@@ -98,6 +118,24 @@ func (lb *LoadBalance) DialUDP(metadata *C.Metadata) (pc C.PacketConn, err error
 // SupportUDP implements C.ProxyAdapter
 func (lb *LoadBalance) SupportUDP() bool {
 	return !lb.disableUDP
+}
+
+func strategyShuffle() strategyFn {
+	rand.Seed(time.Now().UnixNano())
+	maxRetry := 5
+	return func(proxies []C.Proxy, metadata *C.Metadata) C.Proxy {
+		length := len(proxies)
+		sl := shuffle(length)
+		for i := 0; i < maxRetry && i <= length; i++ {
+			idx := sl[i]
+			proxy := proxies[idx]
+			if proxy.Alive() {
+				return proxy
+			}
+		}
+
+		return proxies[0]
+	}
 }
 
 func strategyRoundRobin() strategyFn {
@@ -166,6 +204,8 @@ func NewLoadBalance(options *GroupCommonOption, providers []provider.ProxyProvid
 		strategyFn = strategyConsistentHashing()
 	case "round-robin":
 		strategyFn = strategyRoundRobin()
+	case "shuffle":
+		strategyFn = strategyShuffle()
 	default:
 		return nil, fmt.Errorf("%w: %s", errStrategy, strategy)
 	}
