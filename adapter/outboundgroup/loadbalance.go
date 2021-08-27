@@ -82,16 +82,6 @@ func makeRange(max int) []int {
 	return a
 }
 
-func shuffle(len int) []int {
-	var indexes = makeRange(len)
-	for i := len; i > 1; i-- {
-		lastIdx := i - 1
-		idx := rand.Intn(i)
-		indexes[lastIdx], indexes[idx] = indexes[idx], indexes[lastIdx]
-	}
-	return indexes
-}
-
 // DialContext implements C.ProxyAdapter
 func (lb *LoadBalance) DialContext(ctx context.Context, metadata *C.Metadata) (c C.Conn, err error) {
 	defer func() {
@@ -128,16 +118,19 @@ func strategyShuffle() strategyFn {
 	maxRetry := 5
 	return func(proxies []C.Proxy, metadata *C.Metadata) C.Proxy {
 		length := len(proxies)
-		sl := shuffle(length)
-		for i := 0; i < maxRetry && i < length; i++ {
-			idx := sl[i]
-			proxy := proxies[idx]
+		var indexes = makeRange(length)
+		for i, retry := length, 0; i > 1 && retry < maxRetry; i, retry = i-1, retry+1 {
+			lastIdx := i - 1
+			idx := rand.Intn(i)
+			indexes[lastIdx], indexes[idx] = indexes[idx], indexes[lastIdx]
+
+			proxy := proxies[indexes[lastIdx]]
 			if proxy.Alive() {
 				return proxy
 			}
 		}
 
-		return proxies[0]
+		return proxies[indexes[0]]
 	}
 }
 
